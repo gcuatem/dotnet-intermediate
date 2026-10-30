@@ -1,23 +1,24 @@
 ```mermaid
 graph TD
-    Client[Clients: Web App / Mobile App] --> LB[Load Balancer / API Gateway]
-
-    subgraph Core_Services [Core Services]
-        LB --> Auth[Auth Service]
-        LB --> EventSvc[Event & Catalog Service]
-        LB --> BookingSvc[Booking & Reservation Service]
-        LB --> PaymentSvc[Payment Service]
-        LB --> NotifSvc[Notification Service]
+    Client[Frontend:<br>Customer & Event Manager UI] --> APIGateway[API Gateway]
+    
+    AuthSvc -->|Authenticated & Authorized Request| EventMgmtSvc["Catalog & Search Service"]
+    AuthSvc -->|Authenticated Request| InventorySvc["Inventory & Seat Management Service"]
+    AuthSvc -->|Authenticated Request| BookingSvc[ Booking/Cart Service]
+    AuthSvc -->|Authenticated Request| TicketSvc["Ticketing Service"]
+    AuthSvc -->|Authenticated Request| PaymentSvc[Payment Service]
+    
+    PaymentSvc --> ExtGateway[External Payment Gateways<br/>Stripe / PayPal / etc.]
+    
+    subgraph Backend
+    AuthSvc -->|Authenticated Request| NotifSvc[Notification Service]
+        APIGateway --> AuthSvc[Auth & Identity Service<br/>]
+        InventorySvc --> Redis[(Redis Cache: Seat Locks)]
+        EventMgmtSvc --> DB[(Relational Database)]
+        InventorySvc --> DB
+        BookingSvc --> DB
+        PaymentSvc --> DB
+        TicketSvc --> DB
+        AuthSvc --> DB
     end
-
-    subgraph Data_Layer [Data Layer]
-        EventSvc --> RDS[(Relational DB: Events & Venues)]
-        BookingSvc --> Redis[(Redis Cache: Seat Locks & Inventory)]
-        BookingSvc --> RDS
-        Auth --> RDS
-        PaymentSvc --> PaymentGW[External Payment Gateway: Stripe/PayPal]
-    end
-
-    BookingSvc --> NotifSvc
-    NotifSvc --> EmailSMS[Email / SMS Providers]
 ```
