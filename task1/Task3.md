@@ -19,10 +19,12 @@ sequenceDiagram
     UI->>Search: getEvents()
     Search-->>UI: Return event list
     UI->>Inventory: getAvailableSeats(eventId)
-    Inventory-->>UI: Return list of available seats
-    UI-->>Customer: Display available seats
+    Inventory-->>UI: Return list of available seats (with prices)
+    
+    Note over UI: UI evaluates seat prices and<br/>selects the cheapest available seat
+    UI-->>Customer: Display available seats & highlight cheapest option
 
-    Customer->>UI: Select seat & add to cart
+    Customer->>UI: Select the cheapest seat & add to cart
     UI->>Booking: addToCart(seatId, customerId) [Token]
     Booking->>Inventory: lockSeat(seatId) [State: Booked]
     Inventory-->>Booking: Seat locked (TTL Active)
