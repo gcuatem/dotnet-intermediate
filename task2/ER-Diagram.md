@@ -75,7 +75,7 @@ erDiagram
         string bookingId FK
         float amount
         string currency
-        string status "Pending / Success / Failed"
+        string status "Success / Failed"
         string gatewayReference "Stripe/PayPal ID"
         datetime timestamp
     }
