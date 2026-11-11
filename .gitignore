@@ -1,0 +1,10 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs/CopilotSnapshots
+/task2/Ticketing/.vs
+/task2/Ticketing/Ticketing.Core/bin/Debug/net10.0
+/task2/Ticketing/Ticketing.Core/obj
+/task2/Ticketing/Ticketing.WebApp/bin/Debug/net10.0
+/task2/Ticketing/Ticketing.WebApp/obj

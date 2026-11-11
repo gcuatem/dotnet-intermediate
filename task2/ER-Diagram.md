@@ -1,48 +1,46 @@
 ```mermaid
-
 erDiagram
-    USER ||--o{ USER_ROLE : has
-    ROLE ||--o{ USER_ROLE : assigned_to
+    AspNetUsers ||--o{ AspNetUserRoles : has
+    AspNetRoles ||--o{ AspNetUserRoles : assigned_to
     
+    AspNetUsers ||--o{ AspNetUserClaims : has
+    AspNetUsers ||--o{ AspNetUserLogins : has
+    AspNetUsers ||--o{ AspNetUserTokens : has
+    AspNetUsers ||--o{ USER : has
+    
+    AspNetRoles ||--o{ AspNetRoleClaims : has
+
+    USER ||--o{ EVENT : creates
     USER ||--o{ BOOKING : creates
-    USER ||--o{ TICKET : owns
+
+    
     
     EVENT ||--|{ SEAT : contains
-    EVENT ||--o{ BOOKING_ITEM : references
+    
     
     SEAT ||--o{ BOOKING_ITEM : includes
-    SEAT ||--o| TICKET : generates
+    
     
     BOOKING ||--|{ BOOKING_ITEM : contains
     BOOKING ||--o| PAYMENT : processes
     
     USER {
-        string id PK "GUID (AspNetUsers)"
-        string userName
-        string email
-        string passwordHash
-        bool emailConfirmed
-        string securityStamp
-        string concurrencyStamp
-    }
 
-    ROLE {
-        string id PK "GUID (AspNetRoles)"
-        string name "Customer / Event Manager"
-        string normalizedName
-    }
-
-    USER_ROLE {
-        string userId PK, FK
-        string roleId PK, FK
+        string UserId PK
+        string FirstName
+        string LastName
+        string Address
+        string IdentificationNumber
     }
 
     EVENT {
         string eventId PK
         string title
         string description
-        datetime date
+        datetime eventDate
+        bool isActive
         string venue
+        datetime createdAt
     }
 
     SEAT {
@@ -56,8 +54,8 @@ erDiagram
     BOOKING {
         string bookingId PK
         string userId FK
-        string status "Cart / Pending / Completed / Cancelled"
-        datetime expiresAt "TTL for Redis/DB Lock"
+        string status " Pending / Completed / Cancelled"
+        datetime expiresAt 
         datetime createdAt
     }
 
@@ -66,6 +64,10 @@ erDiagram
         string bookingId FK
         string seatId FK
         string eventId FK
+        string TicketqrCode
+        string Ticketstatus "Valid / Used / Cancelled"
+        datetime issuedAt
+        datetime validUntil
     }
 
     PAYMENT {
@@ -78,12 +80,4 @@ erDiagram
         datetime timestamp
     }
 
-    TICKET {
-        string ticketId PK
-        string userId FK
-        string seatId FK
-        string qrCodeData
-        string status "Valid / Used / Cancelled"
-        datetime issuedAt
-    }
 ```
