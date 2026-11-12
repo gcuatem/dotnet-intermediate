@@ -5,7 +5,7 @@ using Ticketing.Core.Model;
 
 namespace Ticketing.Core.Data;
 
-public class WebIdentityDbContext : IdentityDbContext
+public class WebIdentityDbContext : IdentityDbContext<User>
 {
 
   public WebIdentityDbContext(DbContextOptions<WebIdentityDbContext> options) : base(options)
