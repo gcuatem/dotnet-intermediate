@@ -13,10 +13,10 @@ erDiagram
     USER ||--o{ EVENT : creates
     USER ||--o{ BOOKING : creates
 
+    VENUE ||--o{ EVENT : hosts
+    VENUE ||--o{ SECTION : contains
     
-    
-    EVENT ||--|{ SEAT : contains
-    
+    SECTION ||--|{ SEAT : contains
     
     SEAT ||--o{ BOOKING_ITEM : includes
     
@@ -35,17 +35,30 @@ erDiagram
 
     EVENT {
         string eventId PK
+        string venueId FK
         string title
         string description
         datetime eventDate
         bool isActive
-        string venue
         datetime createdAt
+    }
+
+    VENUE {
+        string venueId PK
+        string name
+        string address
+    }
+
+    SECTION {
+        string sectionId PK
+        string venueId FK
+        string name
     }
 
     SEAT {
         string seatId PK
-        string eventId FK
+        string sectionId PK
+        string venueId FK
         string seatNumber
         float price
         string status "Available / Locked / Sold"
@@ -63,6 +76,8 @@ erDiagram
         string itemId PK
         string bookingId FK
         string seatId FK
+        string sectionId PK
+        string venueId FK
         string eventId FK
         string TicketqrCode
         string Ticketstatus "Valid / Used / Cancelled"

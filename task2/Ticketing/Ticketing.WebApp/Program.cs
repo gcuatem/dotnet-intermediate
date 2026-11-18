@@ -14,14 +14,22 @@ namespace Ticketing.WebApp
     {
       var builder = WebApplication.CreateBuilder(args);
 
-      var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+      var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+        ?? throw new InvalidOperationException("The DefaultConnection connection string is missing.");
 
       // Add services to the container.
       builder.Services.AddRazorPages();
-      builder.Services.AddScoped<IDbConnection>(_ => new SqlConnection(connectionString));
+      builder.Services.AddScoped<IDbConnection>(_ =>
+      {
+        var connection = new SqlConnection(connectionString);
+        connection.Open();
+        return connection;
+      });
       builder.Services.AddScoped<IEventRepository, EventRepository>();
       builder.Services.AddScoped<IBookingRepository, BookingRepository>();
       builder.Services.AddScoped<IPaymentRepository, PaymentRepository>();
+      builder.Services.AddScoped<IVenueRepository, VenueRepository>();
+      builder.Services.AddScoped<ISectionRepository, SectionRepository>();
       builder.Services.AddDbContext<WebIdentityDbContext>(options =>
         options.UseSqlServer(connectionString,
         sqlServerOptionsAction: sqlOptions =>

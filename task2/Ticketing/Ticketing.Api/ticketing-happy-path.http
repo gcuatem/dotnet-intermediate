@@ -1,0 +1,72 @@
+@baseUrl = http://localhost:5068
+
+### 1. Create venue
+POST {{baseUrl}}/venues
+Content-Type: application/json
+
+{
+  "name": "Grand Theater",
+  "address": "123 Main Street",
+  "sections": [
+    { "name": "Orchestra", "seats": [{ "seatNumber": "1", "seatRow": "A" }, { "seatNumber": "2", "seatRow": "A" }] },
+    { "name": "Balcony", "seats": [{ "seatNumber": "1", "seatRow": "B" }, { "seatNumber": "2", "seatRow": "B" }] }
+  ]
+}
+
+### 2. Create event
+POST {{baseUrl}}/events
+Content-Type: application/json
+
+{
+  "venueId": "5ad44f5f-cbbe-4aba-969f-7e073b28327c",
+  "title": "Midnight Symphony",
+  "description": "An evening of classical music",
+  "eventDate": "2026-12-20T20:00:00Z",
+  "seats": [
+    { "seatId": "157950cf-18e7-40b1-8bda-08bfe3afae0e", "price": 120.00 },
+    { "seatId": "dbb1e491-a77a-419a-b77e-9660317f101b", "price": 120.00 },
+    { "seatId": "58cec8e0-b370-4495-8ad7-7f0fb9edef5e", "price": 75.50 },
+    { "seatId": "8968060b-c7db-4040-bd6c-94b95e697776", "price": 75.50}
+  ]
+}
+
+### 3. List All event seats
+GET {{baseUrl}}/events/8a90c9fa-f408-4fb5-be05-35b730b8e8fe/sections/5181642d-7f74-42c2-a95f-46ec36855135/seats
+
+### 3.1 List Available event seats
+GET {{baseUrl}}/events/8a90c9fa-f408-4fb5-be05-35b730b8e8fe/seats/available
+
+### 4. Create booking with A1
+POST {{baseUrl}}/booking
+Content-Type: application/json
+
+{
+  "userId": "fedf21e2-22c1-4a5f-8e84-7a7df4a9a499",
+  "eventId": "8a90c9fa-f408-4fb5-be05-35b730b8e8fe",
+  "seatId": "dbb1e491-a77a-419a-b77e-9660317f101b",
+  "price": 120.00
+}
+
+
+### 5. Add A2 to same booking
+POST {{baseUrl}}/booking/<CLIENT_BOOKING_UUID>
+Content-Type: application/json
+
+{
+  "userId": "fedf21e2-22c1-4a5f-8e84-7a7df4a9a499",
+  "eventId": "8a90c9fa-f408-4fb5-be05-35b730b8e8fe",
+  "seatId": "157950cf-18e7-40b1-8bda-08bfe3afae0e",
+  "price": 120.00
+}
+
+### 6. Read booking
+GET {{baseUrl}}/booking/<CLIENT_BOOKING_UUID>?userId=<USER_ID>
+
+### 7. Register payment
+POST {{baseUrl}}/payments
+Content-Type: application/json
+
+{ "userId": "<USER_ID>", "bookingId": "<CLIENT_BOOKING_UUID>", "currency": "USD", "status": "Success", "gatewayReference": "test-gateway-001" }
+
+### 8. Get payment
+GET {{baseUrl}}/payments/booking/<CLIENT_BOOKING_UUID>?userId=<USER_ID>

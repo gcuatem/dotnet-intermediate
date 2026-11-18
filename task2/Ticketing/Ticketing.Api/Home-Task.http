@@ -1,0 +1,61 @@
+@baseUrl = https://localhost:7037
+### Venues
+### a. GET /venues
+
+GET {{baseUrl}}/venues
+
+
+### b. GET /venues/{venue_id}/sections
+GET {{baseUrl}}/venues/5ad44f5f-cbbe-4aba-969f-7e073b28327c/sections
+
+### Events
+### a. GET /events
+GET {{baseUrl}}/events
+
+### b. GET /events/{event_id}/sections/{section_id}/seats
+GET {{baseUrl}}/events/8a90c9fa-f408-4fb5-be05-35b730b8e8fe/sections/5181642d-7f74-42c2-a95f-46ec36855135/seats
+
+### Booking
+GET {{baseUrl}}/booking/69f5a274-0c08-4f03-97b2-2e835b63bbc7?userId=fedf21e2-22c1-4a5f-8e84-7a7df4a9a499
+
+### Create a new booking with A1
+POST {{baseUrl}}/booking
+Content-Type: application/json
+
+{
+  "userId": "fedf21e2-22c1-4a5f-8e84-7a7df4a9a499",
+  "eventId": "8a90c9fa-f408-4fb5-be05-35b730b8e8fe",
+  "seatId": "dbb1e491-a77a-419a-b77e-9660317f101b",
+  "price": 120.00
+}
+
+
+### Add seat to same booking
+POST {{baseUrl}}/booking/69f5a274-0c08-4f03-97b2-2e835b63bbc7
+Content-Type: application/json
+
+{
+  "userId": "fedf21e2-22c1-4a5f-8e84-7a7df4a9a499",
+  "eventId": "8a90c9fa-f408-4fb5-be05-35b730b8e8fe",
+  "seatId": "157950cf-18e7-40b1-8bda-08bfe3afae0e",
+  "price": 120.00
+}
+
+### Remove seat from booking
+DELETE {{baseUrl}}/booking/69f5a274-0c08-4f03-97b2-2e835b63bbc7/events/8a90c9fa-f408-4fb5-be05-35b730b8e8fe/seats/dbb1e491-a77a-419a-b77e-9660317f101b?userId=fedf21e2-22c1-4a5f-8e84-7a7df4a9a499
+
+
+### Payments
+### a. GET payments/{payment_id} 
+GET {{baseUrl}}/payments/booking/69f5a274-0c08-4f03-97b2-2e835b63bbc7?userId=fedf21e2-22c1-4a5f-8e84-7a7df4a9a499
+
+### b. Register payment
+POST {{baseUrl}}/payments
+Content-Type: application/json
+
+{ 
+  "userId": "fedf21e2-22c1-4a5f-8e84-7a7df4a9a499", 
+"bookingId": "69f5a274-0c08-4f03-97b2-2e835b63bbc7", 
+"currency": "USD", "status": "Success", 
+"gatewayReference": "test-gateway-001" 
+}

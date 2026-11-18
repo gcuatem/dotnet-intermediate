@@ -2,6 +2,7 @@
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />
   </Folder>
+  <Project Path="Ticketing.Api/Ticketing.Api.csproj" Id="af2534b7-f954-4a6d-96db-6fab7d409d2a" />
   <Project Path="Ticketing.Core/Ticketing.Core.csproj" />
   <Project Path="Ticketing.WebApp/Ticketing.WebApp.csproj" />
 </Solution>

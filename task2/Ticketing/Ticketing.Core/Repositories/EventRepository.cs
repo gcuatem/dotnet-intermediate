@@ -5,6 +5,8 @@ using Ticketing.Core.Model;
 
 namespace Ticketing.Core.Repositories;
 
+public sealed record EventSeatSeed(string SeatId);
+
 public class EventRepository : IEventRepository
 {
     private readonly IDbConnection _connection;
@@ -26,22 +28,30 @@ public class EventRepository : IEventRepository
         return await _connection.QuerySingleOrDefaultAsync<Event>(EventSqlQueries.GetById, new { EventId = eventId });
     }
 
-    public async Task<IEnumerable<Seat>> GetSeatsByEventIdAsync(string eventId)
+    public async Task<IEnumerable<EventSeatListItem>> GetSeatsByEventIdAsync(string eventId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(eventId);
 
-        return await _connection.QueryAsync<Seat>(EventSqlQueries.GetSeatsByEventId, new { EventId = eventId });
+        return await _connection.QueryAsync<EventSeatListItem>(EventSqlQueries.GetSeatsByEventId, new { EventId = eventId });
     }
 
-    public async Task<IEnumerable<Seat>> GetAvailableSeatsByEventIdAsync(string eventId)
+    public async Task<IEnumerable<EventSeatListItem>> GetAvailableSeatsByEventIdAsync(string eventId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(eventId);
 
-        return await _connection.QueryAsync<Seat>(EventSqlQueries.GetAvailableSeats, new
+        return await _connection.QueryAsync<EventSeatListItem>(EventSqlQueries.GetAvailableSeats, new
         {
             EventId = eventId,
             Status = SeatStatus.Available
         });
+    }
+
+    public async Task<IEnumerable<EventSeatListItem>> GetSeatsByEventAndSectionAsync(string eventId, string sectionId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(eventId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sectionId);
+        return await _connection.QueryAsync<EventSeatListItem>(EventSqlQueries.GetSeatsByEventAndSection,
+            new { EventId = eventId, SectionId = sectionId });
     }
 
     public async Task<int> AddAsync(Event @event)
@@ -69,50 +79,45 @@ public class EventRepository : IEventRepository
         }
 
         @event.IsActive = true;
-        @event.Seats ??= new List<Seat>();
 
         using var transaction = _connection.BeginTransaction();
-
-        var eventRows = await _connection.ExecuteAsync(EventSqlQueries.Add, @event, transaction);
-        var seatRows = 0;
-
-        foreach (var seat in @event.Seats)
+        try
         {
-            if (seat is null)
+            var eventRows = await _connection.ExecuteAsync(EventSqlQueries.Add, @event, transaction);
+            var seats = (await _connection.QueryAsync<EventSeatSeed>(EventSqlQueries.GetVenueSeats,
+                new { @event.VenueId }, transaction)).ToList();
+
+            var requestedPrices = @event.EventSeats
+                .Where(es => !string.IsNullOrWhiteSpace(es.SeatId))
+                .ToDictionary(es => es.SeatId, es => es.Price, StringComparer.Ordinal);
+
+            var eventSeatRows = 0;
+            foreach (var seat in seats)
             {
-                continue;
+                var price = requestedPrices.TryGetValue(seat.SeatId, out var configuredPrice)
+                    ? configuredPrice
+                    : 0m;
+                if (price < 0)
+                    throw new InvalidOperationException("Event seat price cannot be negative.");
+
+                eventSeatRows += await _connection.ExecuteAsync(EventSqlQueries.AddEventSeat, new
+                {
+                    EventSeatId = Guid.NewGuid().ToString(),
+                    EventId = @event.EventId,
+                    SeatId = seat.SeatId,
+                    Price = price,
+                    Status = SeatStatus.Available
+                }, transaction);
             }
 
-            if (string.IsNullOrWhiteSpace(seat.SeatId))
-            {
-                seat.SeatId = Guid.NewGuid().ToString();
-            }
-
-            seat.EventId = @event.EventId;
-            seat.Status = seat.Status == default ? SeatStatus.Available : seat.Status;
-
-            if (string.IsNullOrWhiteSpace(seat.SeatNumber))
-            {
-                throw new InvalidOperationException("Each seat must have a SeatNumber.");
-            }
-
-            if (seat.Price < 0)
-            {
-                throw new InvalidOperationException("Seat price should be a positive value.");
-            }
-
-            seatRows += await _connection.ExecuteAsync(EventSqlQueries.InsertSeat, new
-            {
-                SeatId = seat.SeatId,
-                EventId = seat.EventId,
-                SeatNumber = seat.SeatNumber,
-                Price = seat.Price,
-                Status = seat.Status
-            }, transaction);
+            transaction.Commit();
+            return eventRows + eventSeatRows;
         }
-
-        transaction.Commit();
-        return eventRows + seatRows;
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
     }
 
     public async Task<int> UpdateAsync(Event @event)
@@ -147,8 +152,8 @@ public class EventRepository : IEventRepository
 
 public static class EventSqlQueries
 {
-  public static string eventFields = @"EventId, Title, Description, EventDate, IsActive, Venue, CreatedAt";
-  public static string seatFields = @"SeatId, EventId, SeatNumber, Price, Status";
+  public static string eventFields = @"EventId, VenueId, Title, Description, EventDate, IsActive, CreatedAt";
+  public static string seatFields = @"es.EventSeatId, s.SeatId, s.SectionId, sec.Name AS SectionName, s.SeatNumber, s.SeatRow, es.Price, es.Status";
   public static string GetAll = @$"
         SELECT {eventFields}
         FROM Events
@@ -159,33 +164,45 @@ public static class EventSqlQueries
         WHERE EventId = @EventId;";
   public static string GetSeatsByEventId = @$"
         SELECT {seatFields}
-        FROM Seats
-        WHERE EventId = @EventId
-        ORDER BY Price ASC;";
+        FROM EventSeats es
+        INNER JOIN Seats s ON s.SeatId = es.SeatId
+        INNER JOIN Sections sec ON sec.SectionId = s.SectionId
+        WHERE es.EventId = @EventId
+        ORDER BY es.Price ASC;";
+  public static string GetSeatsByEventAndSection = @$"
+        SELECT {seatFields}
+        FROM EventSeats es
+        INNER JOIN Seats s ON s.SeatId = es.SeatId
+        INNER JOIN Sections sec ON sec.SectionId = s.SectionId
+        WHERE es.EventId = @EventId
+          AND s.SectionId = @SectionId
+        ORDER BY s.SeatNumber;";
   public static string GetAvailableSeats = @$"
         SELECT {seatFields}
-        FROM Seats
-        WHERE EventId = @EventId
-          AND Status = @Status
-        ORDER BY Price ASC;";
+        FROM EventSeats es
+        INNER JOIN Seats s ON s.SeatId = es.SeatId
+        INNER JOIN Sections sec ON sec.SectionId = s.SectionId
+        WHERE es.EventId = @EventId
+          AND es.Status = @Status
+        ORDER BY es.Price ASC;";
   public static string Add = @$"
         INSERT INTO Events ({eventFields})
         VALUES (
             @EventId,
+            @VenueId,
             @Title,
             @Description,
             @EventDate,
             @IsActive,
-            @Venue,
             @CreatedAt);";
-  public static string InsertSeat = @$"
-        INSERT INTO Seats ({seatFields})
-        VALUES (
-            @SeatId,
-            @EventId,
-            @SeatNumber,
-            @Price,
-            @Status);";
+  public const string GetVenueSeats = @"
+        SELECT s.SeatId
+        FROM Seats s
+        INNER JOIN Sections sec ON sec.SectionId = s.SectionId
+        WHERE sec.VenueId = @VenueId;";
+  public const string AddEventSeat = @"
+        INSERT INTO EventSeats (EventSeatId, EventId, SeatId, Price, Status)
+        VALUES (@EventSeatId, @EventId, @SeatId, @Price, @Status);";
   public static string Update = @"
         UPDATE Events
         SET
@@ -193,7 +210,7 @@ public static class EventSqlQueries
             Description = @Description,
             EventDate = @EventDate,
             IsActive = @IsActive,
-            Venue = @Venue
+            VenueId = @VenueId
         WHERE EventId = @EventId;";
   public static string Delete = @"
         DELETE FROM Events

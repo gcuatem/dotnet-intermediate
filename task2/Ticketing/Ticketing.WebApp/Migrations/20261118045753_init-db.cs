@@ -55,20 +55,16 @@ namespace Ticketing.WebApp.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "Events",
+                name: "Venues",
                 columns: table => new
                 {
-                    EventId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    Title = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    Description = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    EventDate = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false),
-                    Venue = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    VenueId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Address = table.Column<string>(type: "nvarchar(max)", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_Events", x => x.EventId);
+                    table.PrimaryKey("PK_Venues", x => x.VenueId);
                 });
 
             migrationBuilder.CreateTable(
@@ -182,7 +178,7 @@ namespace Ticketing.WebApp.Migrations
                 columns: table => new
                 {
                     BookingId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    UserId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    UserId = table.Column<string>(type: "nvarchar(450)", nullable: true),
                     Status = table.Column<int>(type: "int", nullable: false),
                     ExpiresAt = table.Column<DateTime>(type: "datetime2", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
@@ -195,27 +191,48 @@ namespace Ticketing.WebApp.Migrations
                         column: x => x.UserId,
                         principalTable: "AspNetUsers",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.SetNull);
                 });
 
             migrationBuilder.CreateTable(
-                name: "Seats",
+                name: "Events",
                 columns: table => new
                 {
-                    SeatId = table.Column<string>(type: "nvarchar(450)", nullable: false),
                     EventId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    SeatNumber = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    Price = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                    Status = table.Column<int>(type: "int", nullable: false)
+                    VenueId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    Title = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    EventDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_Seats", x => x.SeatId);
+                    table.PrimaryKey("PK_Events", x => x.EventId);
                     table.ForeignKey(
-                        name: "FK_Seats_Events_EventId",
-                        column: x => x.EventId,
-                        principalTable: "Events",
-                        principalColumn: "EventId",
+                        name: "FK_Events_Venues_VenueId",
+                        column: x => x.VenueId,
+                        principalTable: "Venues",
+                        principalColumn: "VenueId",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Sections",
+                columns: table => new
+                {
+                    SectionId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    VenueId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(max)", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Sections", x => x.SectionId);
+                    table.ForeignKey(
+                        name: "FK_Sections_Venues_VenueId",
+                        column: x => x.VenueId,
+                        principalTable: "Venues",
+                        principalColumn: "VenueId",
                         onDelete: ReferentialAction.Cascade);
                 });
 
@@ -243,13 +260,59 @@ namespace Ticketing.WebApp.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "Seats",
+                columns: table => new
+                {
+                    SeatId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    SectionId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    SeatNumber = table.Column<string>(type: "nvarchar(max)", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Seats", x => x.SeatId);
+                    table.ForeignKey(
+                        name: "FK_Seats_Sections_SectionId",
+                        column: x => x.SectionId,
+                        principalTable: "Sections",
+                        principalColumn: "SectionId",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "EventSeats",
+                columns: table => new
+                {
+                    EventSeatId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    EventId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    SeatId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    Price = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    Status = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_EventSeats", x => x.EventSeatId);
+                    table.ForeignKey(
+                        name: "FK_EventSeats_Events_EventId",
+                        column: x => x.EventId,
+                        principalTable: "Events",
+                        principalColumn: "EventId",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_EventSeats_Seats_SeatId",
+                        column: x => x.SeatId,
+                        principalTable: "Seats",
+                        principalColumn: "SeatId",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "BookingItems",
                 columns: table => new
                 {
                     ItemId = table.Column<string>(type: "nvarchar(450)", nullable: false),
                     BookingId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    SeatId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    EventId = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    EventSeatId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    Price = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
                     TicketQrCode = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     TicketStatus = table.Column<int>(type: "int", nullable: false),
                     IssuedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
@@ -265,10 +328,10 @@ namespace Ticketing.WebApp.Migrations
                         principalColumn: "BookingId",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
-                        name: "FK_BookingItems_Seats_SeatId",
-                        column: x => x.SeatId,
-                        principalTable: "Seats",
-                        principalColumn: "SeatId",
+                        name: "FK_BookingItems_EventSeats_EventSeatId",
+                        column: x => x.EventSeatId,
+                        principalTable: "EventSeats",
+                        principalColumn: "EventSeatId",
                         onDelete: ReferentialAction.Restrict);
                 });
 
@@ -317,14 +380,30 @@ namespace Ticketing.WebApp.Migrations
                 column: "BookingId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_BookingItems_SeatId",
+                name: "IX_BookingItems_EventSeatId",
                 table: "BookingItems",
-                column: "SeatId");
+                column: "EventSeatId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Bookings_UserId",
                 table: "Bookings",
                 column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Events_VenueId",
+                table: "Events",
+                column: "VenueId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_EventSeats_EventId_SeatId",
+                table: "EventSeats",
+                columns: new[] { "EventId", "SeatId" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_EventSeats_SeatId",
+                table: "EventSeats",
+                column: "SeatId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Payments_BookingId",
@@ -333,9 +412,14 @@ namespace Ticketing.WebApp.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_Seats_EventId_Price",
+                name: "IX_Seats_SectionId",
                 table: "Seats",
-                columns: new[] { "EventId", "Price" });
+                column: "SectionId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Sections_VenueId",
+                table: "Sections",
+                column: "VenueId");
         }
 
         /// <inheritdoc />
@@ -366,7 +450,7 @@ namespace Ticketing.WebApp.Migrations
                 name: "AspNetRoles");
 
             migrationBuilder.DropTable(
-                name: "Seats");
+                name: "EventSeats");
 
             migrationBuilder.DropTable(
                 name: "Bookings");
@@ -375,7 +459,16 @@ namespace Ticketing.WebApp.Migrations
                 name: "Events");
 
             migrationBuilder.DropTable(
+                name: "Seats");
+
+            migrationBuilder.DropTable(
                 name: "AspNetUsers");
+
+            migrationBuilder.DropTable(
+                name: "Sections");
+
+            migrationBuilder.DropTable(
+                name: "Venues");
         }
     }
 }

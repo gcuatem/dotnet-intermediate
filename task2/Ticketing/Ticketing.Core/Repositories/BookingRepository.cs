@@ -14,15 +14,15 @@ public class BookingRepository : IBookingRepository
         _connection = connection ?? throw new ArgumentNullException(nameof(connection));
     }
 
-    public async Task<Booking?> GetByIdAsync(string bookingId)
+    public async Task<Booking?> GetByIdAsync(string bookingId, string userId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(bookingId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
-        var booking = await _connection.QuerySingleOrDefaultAsync<Booking>(BookingSqlQueries.GetById, new { BookingId = bookingId });
-        if (booking is null)
-        {
-            return null;
-        }
+        var booking = await _connection.QuerySingleOrDefaultAsync<Booking>(
+            BookingSqlQueries.GetByIdForUser,
+            new { BookingId = bookingId, UserId = userId });
+        if (booking is null) return null;
 
         booking.Items = (await GetItemsByBookingIdAsync(bookingId)).ToList();
         return booking;
@@ -52,16 +52,12 @@ public class BookingRepository : IBookingRepository
     {
         ArgumentNullException.ThrowIfNull(booking);
         ArgumentNullException.ThrowIfNull(items);
+        ArgumentException.ThrowIfNullOrWhiteSpace(booking.UserId);
 
         var itemList = items.ToList();
         if (itemList.Count == 0)
         {
             throw new InvalidOperationException("A booking must contain at least one item.");
-        }
-
-        if (string.IsNullOrWhiteSpace(booking.UserId))
-        {
-            throw new InvalidOperationException("Booking requires a UserId.");
         }
 
         if (string.IsNullOrWhiteSpace(booking.BookingId))
@@ -81,66 +77,7 @@ public class BookingRepository : IBookingRepository
 
         return await ExecuteInTransactionAsync(async (connection, dbTransaction) =>
         {
-            var firstItem = itemList[0];
-            if (string.IsNullOrWhiteSpace(firstItem.EventId))
-            {
-                throw new InvalidOperationException("Every booking item must include an EventId.");
-            }
-
-            var eventEntity = await connection.QuerySingleOrDefaultAsync<Event>(BookingSqlQueries.GetEventById, new { EventId = firstItem.EventId }, dbTransaction);
-            if (eventEntity is null)
-            {
-                throw new InvalidOperationException("The event does not exist.");
-            }
-
-            if (!eventEntity.IsActive || eventEntity.EventDate < DateTime.UtcNow)
-            {
-                throw new InvalidOperationException("The event is not available for booking.");
-            }
-
             var createdItems = new List<BookingItem>();
-            foreach (var item in itemList)
-            {
-                if (string.IsNullOrWhiteSpace(item.SeatId))
-                {
-                    throw new InvalidOperationException("Every booking item must include a SeatId.");
-                }
-
-                if (string.IsNullOrWhiteSpace(item.EventId))
-                {
-                    item.EventId = firstItem.EventId;
-                }
-
-                if (!string.Equals(item.EventId, firstItem.EventId, StringComparison.Ordinal))
-                {
-                    throw new InvalidOperationException("All booking items must belong to the same event.");
-                }
-
-                var seat = await connection.QuerySingleOrDefaultAsync<Seat>(BookingSqlQueries.GetSeatById, new { SeatId = item.SeatId }, dbTransaction);
-                if (seat is null)
-                {
-                    throw new InvalidOperationException($"Seat '{item.SeatId}' does not exist.");
-                }
-
-                if (seat.EventId != firstItem.EventId)
-                {
-                    throw new InvalidOperationException($"Seat '{item.SeatId}' does not belong to the requested event.");
-                }
-
-                if (seat.Status != SeatStatus.Available)
-                {
-                    throw new InvalidOperationException($"Seat '{item.SeatId}' is not available.");
-                }
-
-                item.BookingId = booking.BookingId;
-                item.ItemId = string.IsNullOrWhiteSpace(item.ItemId) ? Guid.NewGuid().ToString() : item.ItemId;
-                item.TicketQrCode = string.IsNullOrWhiteSpace(item.TicketQrCode) ? $"{eventEntity.EventId}-{item.SeatId}-{Guid.NewGuid():N}" : item.TicketQrCode;
-                item.TicketStatus = TicketStatus.Pending;
-                item.IssuedAt = item.IssuedAt == default ? DateTime.UtcNow : item.IssuedAt;
-                item.ValidUntil ??= eventEntity.EventDate;
-
-                createdItems.Add(item);
-            }
 
             await connection.ExecuteAsync(BookingSqlQueries.InsertBooking, new
             {
@@ -151,30 +88,222 @@ public class BookingRepository : IBookingRepository
                 CreatedAt = booking.CreatedAt
             }, dbTransaction);
 
-            foreach (var item in createdItems)
+            foreach (var item in itemList)
             {
+                ArgumentException.ThrowIfNullOrWhiteSpace(item.EventSeatId);
+
+                var eventSeat = await connection.QuerySingleOrDefaultAsync<EventSeat>(
+                    BookingSqlQueries.GetEventSeatById,
+                    new { EventSeatId = item.EventSeatId }, dbTransaction);
+                if (eventSeat is null)
+                    throw new InvalidOperationException("Event seat does not exist.");
+                if (eventSeat.Status != SeatStatus.Available)
+                    throw new InvalidOperationException("Event seat is not available.");
+
+                item.BookingId = booking.BookingId;
+                item.ItemId = string.IsNullOrWhiteSpace(item.ItemId) ? Guid.NewGuid().ToString() : item.ItemId;
+                item.Price = item.Price == 0 ? eventSeat.Price : item.Price;
+                item.TicketQrCode = string.IsNullOrWhiteSpace(item.TicketQrCode)
+                    ? $"{eventSeat.EventId}-{eventSeat.SeatId}-{Guid.NewGuid():N}"
+                    : item.TicketQrCode;
+                item.TicketStatus = TicketStatus.Pending;
+                item.IssuedAt = item.IssuedAt == default ? DateTime.UtcNow : item.IssuedAt;
+
                 await connection.ExecuteAsync(BookingSqlQueries.InsertBookingItem, new
                 {
                     ItemId = item.ItemId,
                     BookingId = item.BookingId,
-                    SeatId = item.SeatId,
-                    EventId = item.EventId,
+                    EventSeatId = item.EventSeatId,
+                    Price = item.Price,
                     TicketQrCode = item.TicketQrCode,
                     TicketStatus = item.TicketStatus,
                     IssuedAt = item.IssuedAt,
                     ValidUntil = item.ValidUntil
                 }, dbTransaction);
 
-                await connection.ExecuteAsync(BookingSqlQueries.UpdateSeatStatus, new
+                await connection.ExecuteAsync(BookingSqlQueries.UpdateEventSeatStatus, new
                 {
-                    SeatId = item.SeatId,
+                    EventSeatId = item.EventSeatId,
                     Status = SeatStatus.Locked
                 }, dbTransaction);
+
+                createdItems.Add(item);
             }
 
             booking.Items = createdItems;
             return booking;
         }, transaction);
+    }
+
+    public Task<Booking> AddItemAsync(string userId, string eventId, string seatId, decimal price)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(eventId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(seatId);
+
+        return AddItemAsync(Guid.NewGuid().ToString(), userId, eventId, seatId, price);
+    }
+
+    public async Task<Booking> AddItemAsync(string bookingId, string userId, string eventId, string seatId, decimal price)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(bookingId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(eventId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(seatId);
+
+        using var transaction = _connection.BeginTransaction();
+        try
+        {
+            var booking = await _connection.QuerySingleOrDefaultAsync<Booking>(BookingSqlQueries.GetById,
+                new { BookingId = bookingId }, transaction);
+            if (booking is null)
+            {
+                booking = new Booking
+                {
+                    BookingId = bookingId,
+                    UserId = userId,
+                    Status = BookingStatus.Pending,
+                    ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+                    CreatedAt = DateTime.UtcNow
+                };
+                await _connection.ExecuteAsync(BookingSqlQueries.InsertBooking, new
+                {
+                    booking.BookingId,
+                    UserId = userId,
+                    Status = BookingStatus.Pending,
+                    booking.ExpiresAt,
+                    booking.CreatedAt
+                }, transaction);
+            }
+            else if (!string.Equals(booking.UserId, userId, StringComparison.Ordinal))
+            {
+                throw new UnauthorizedAccessException("The booking does not belong to this user.");
+            }
+
+            var eventSeat = await _connection.QuerySingleOrDefaultAsync<EventSeat>(BookingSqlQueries.GetEventSeat,
+                new { EventId = eventId, SeatId = seatId }, transaction);
+            if (eventSeat is null) throw new InvalidOperationException("The seat is not available for this event.");
+            if (eventSeat.Status != SeatStatus.Available) throw new InvalidOperationException("The seat is not available.");
+
+            var existing = await _connection.ExecuteScalarAsync<int>(BookingSqlQueries.CountItem,
+                new { BookingId = bookingId, EventSeatId = eventSeat.EventSeatId }, transaction);
+            if (existing > 0) throw new InvalidOperationException("The seat is already in the booking.");
+
+            var item = new BookingItem
+            {
+                BookingId = bookingId,
+                EventSeatId = eventSeat.EventSeatId,
+                Price = eventSeat.Price,
+                TicketStatus = TicketStatus.Pending,
+                IssuedAt = DateTime.UtcNow,
+                ValidUntil = DateTime.UtcNow.AddHours(24)
+            };
+            await _connection.ExecuteAsync(BookingSqlQueries.InsertBookingItem, new
+            {
+                item.ItemId,
+                item.BookingId,
+                item.EventSeatId,
+                Price = eventSeat.Price,
+                TicketQrCode = $"{eventId}-{seatId}-{Guid.NewGuid():N}",
+                item.TicketStatus,
+                item.IssuedAt,
+                item.ValidUntil
+            }, transaction);
+            await _connection.ExecuteAsync(BookingSqlQueries.UpdateEventSeatStatus,
+                new { EventSeatId = eventSeat.EventSeatId, Status = SeatStatus.Locked }, transaction);
+
+            transaction.Commit();
+            booking.Items = (await GetItemsByBookingIdAsync(bookingId)).ToList();
+            return booking;
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    public async Task<bool> RemoveItemAsync(string bookingId, string userId, string eventId, string seatId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(bookingId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(eventId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(seatId);
+
+        using var transaction = _connection.BeginTransaction();
+        var booking = await _connection.QuerySingleOrDefaultAsync<Booking>(
+            BookingSqlQueries.GetByIdForUser,
+            new { BookingId = bookingId, UserId = userId }, transaction);
+        if (booking is null)
+        {
+            transaction.Commit();
+            return false;
+        }
+
+        var eventSeatId = await _connection.ExecuteScalarAsync<string>(BookingSqlQueries.GetEventSeatId,
+            new { EventId = eventId, SeatId = seatId }, transaction);
+        var deleted = eventSeatId is null ? 0 : await _connection.ExecuteAsync(BookingSqlQueries.DeleteItem,
+            new { BookingId = bookingId, EventSeatId = eventSeatId }, transaction);
+        if (deleted > 0)
+        {
+            await _connection.ExecuteAsync(BookingSqlQueries.ReleaseEventSeat,
+                new { EventSeatId = eventSeatId, Available = SeatStatus.Available, Locked = SeatStatus.Locked }, transaction);
+        }
+        transaction.Commit();
+        return deleted > 0;
+    }
+
+    public async Task<string> MarkBookedAsync(string bookingId, string userId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(bookingId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        using var transaction = _connection.BeginTransaction();
+        try
+        {
+            var booking = await _connection.QuerySingleOrDefaultAsync<Booking>(
+                BookingSqlQueries.GetByIdForUser,
+                new { BookingId = bookingId, UserId = userId }, transaction);
+            if (booking is null)
+                throw new UnauthorizedAccessException("The booking does not belong to this user.");
+
+            var paymentId = await MarkBookedCoreAsync(bookingId, transaction);
+            transaction.Commit();
+            return paymentId;
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    private async Task<string> MarkBookedCoreAsync(string bookingId, IDbTransaction transaction)
+    {
+        var items = (await _connection.QueryAsync<BookingItem>(BookingSqlQueries.GetItemsByBookingId,
+            new { BookingId = bookingId }, transaction)).ToList();
+        if (items.Count == 0) throw new InvalidOperationException("The booking has no items.");
+
+        await _connection.ExecuteAsync(BookingSqlQueries.MarkCompletedBooking,
+            new { BookingId = bookingId, Pending = BookingStatus.Pending, Completed = BookingStatus.Completed }, transaction);
+        await _connection.ExecuteAsync(BookingSqlQueries.MarkSeatsSoldForBooking,
+            new { BookingId = bookingId, Sold = SeatStatus.Sold, Locked = SeatStatus.Locked }, transaction);
+        await _connection.ExecuteAsync(BookingSqlQueries.MarkBookingItemsValid,
+            new { BookingId = bookingId, Pending = TicketStatus.Pending, Valid = TicketStatus.Valid, Cancelled = TicketStatus.Cancelled }, transaction);
+
+        var paymentId = Guid.NewGuid().ToString();
+        await _connection.ExecuteAsync(PaymentSqlQueries.Insert,
+            new
+            {
+                PaymentId = paymentId,
+                BookingId = bookingId,
+                Amount = items.Sum(i => i.Price),
+                Currency = "USD",
+                Status = PaymentStatus.Success,
+                GatewayReference = string.Empty,
+                Timestamp = DateTime.UtcNow
+            }, transaction);
+        return paymentId;
     }
 
     public async Task<int> CancelPendingAsync(string bookingId, IDbTransaction? transaction = null)
@@ -279,40 +408,69 @@ public static class BookingSqlQueries
         FROM Bookings
         WHERE BookingId = @BookingId;";
 
+    public const string GetByIdForUser = @"
+        SELECT BookingId, UserId, Status, ExpiresAt, CreatedAt
+        FROM Bookings
+        WHERE BookingId = @BookingId AND UserId = @UserId;";
+
     public const string GetByUserId = @"
         SELECT BookingId, UserId, Status, ExpiresAt, CreatedAt
         FROM Bookings
         WHERE UserId = @UserId
         ORDER BY CreatedAt DESC;";
 
+    public const string CountItem = @"
+        SELECT COUNT(*) FROM BookingItems
+        WHERE BookingId = @BookingId AND EventSeatId = @EventSeatId;";
+
+    public const string GetEventSeat = @"
+        SELECT EventSeatId, EventId, SeatId, Price, Status
+        FROM EventSeats
+        WHERE EventId = @EventId AND SeatId = @SeatId;";
+
+    public const string GetEventSeatById = @"
+        SELECT EventSeatId, EventId, SeatId, Price, Status
+        FROM EventSeats
+        WHERE EventSeatId = @EventSeatId;";
+
+    public const string GetEventSeatId = @"
+        SELECT EventSeatId FROM EventSeats
+        WHERE EventId = @EventId AND SeatId = @SeatId;";
+
+    public const string DeleteItem = @"
+        DELETE FROM BookingItems
+        WHERE BookingId = @BookingId AND EventSeatId = @EventSeatId;";
+
+    public const string ReleaseEventSeat = @"
+        UPDATE EventSeats SET Status = @Available
+        WHERE EventSeatId = @EventSeatId AND Status = @Locked;";
+
     public const string GetItemsByBookingId = @"
-        SELECT ItemId, BookingId, SeatId, EventId, TicketQrCode, TicketStatus, IssuedAt, ValidUntil
-        FROM BookingItems
-        WHERE BookingId = @BookingId
+        SELECT bi.ItemId, bi.BookingId, bi.EventSeatId, bi.TicketQrCode, bi.TicketStatus, bi.IssuedAt, bi.ValidUntil,
+               COALESCE(bi.Price, es.Price) AS Price
+        FROM BookingItems bi
+        LEFT JOIN EventSeats es ON es.EventSeatId = bi.EventSeatId
+        WHERE bi.BookingId = @BookingId
         ORDER BY IssuedAt;";
 
     public const string GetEventById = @"
-        SELECT EventId, Title, Description, EventDate, IsActive, Venue, CreatedAt
+        SELECT EventId, VenueId, Title, Description, EventDate, IsActive, CreatedAt
         FROM Events
         WHERE EventId = @EventId;";
 
-    public const string GetSeatById = @"
-        SELECT SeatId, EventId, SeatNumber, Price, Status
-        FROM Seats
-        WHERE SeatId = @SeatId;";
 
     public const string InsertBooking = @"
         INSERT INTO Bookings (BookingId, UserId, Status, ExpiresAt, CreatedAt)
         VALUES (@BookingId, @UserId, @Status, @ExpiresAt, @CreatedAt);";
 
     public const string InsertBookingItem = @"
-        INSERT INTO BookingItems (ItemId, BookingId, SeatId, EventId, TicketQrCode, TicketStatus, IssuedAt, ValidUntil)
-        VALUES (@ItemId, @BookingId, @SeatId, @EventId, @TicketQrCode, @TicketStatus, @IssuedAt, @ValidUntil);";
+        INSERT INTO BookingItems (ItemId, BookingId, EventSeatId, Price, TicketQrCode, TicketStatus, IssuedAt, ValidUntil)
+        VALUES (@ItemId, @BookingId, @EventSeatId, @Price, @TicketQrCode, @TicketStatus, @IssuedAt, @ValidUntil);";
 
-    public const string UpdateSeatStatus = @"
-        UPDATE Seats
+    public const string UpdateEventSeatStatus = @"
+        UPDATE EventSeats
         SET Status = @Status
-        WHERE SeatId = @SeatId;";
+        WHERE EventSeatId = @EventSeatId;";
 
     public const string CancelPendingBooking = @"
         UPDATE Bookings
@@ -321,10 +479,10 @@ public static class BookingSqlQueries
           AND Status = @Pending;";
 
     public const string ReleaseSeatsForBooking = @"
-        UPDATE Seats
+        UPDATE EventSeats
         SET Status = @Available
-        WHERE SeatId IN (
-            SELECT SeatId
+        WHERE EventSeatId IN (
+            SELECT EventSeatId
             FROM BookingItems
             WHERE BookingId = @BookingId
         )
@@ -343,10 +501,10 @@ public static class BookingSqlQueries
           AND Status = @Pending;";
 
     public const string MarkSeatsSoldForBooking = @"
-        UPDATE Seats
+        UPDATE EventSeats
         SET Status = @Sold
-        WHERE SeatId IN (
-            SELECT SeatId
+        WHERE EventSeatId IN (
+            SELECT EventSeatId
             FROM BookingItems
             WHERE BookingId = @BookingId
         )

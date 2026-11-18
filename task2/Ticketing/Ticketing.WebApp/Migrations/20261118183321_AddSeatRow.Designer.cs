@@ -12,8 +12,8 @@ using Ticketing.Core.Data;
 namespace Ticketing.WebApp.Migrations
 {
     [DbContext(typeof(WebIdentityDbContext))]
-    [Migration("20261112180232_initdb")]
-    partial class initdb
+    [Migration("20261118183321_AddSeatRow")]
+    partial class AddSeatRow
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -192,16 +192,15 @@ namespace Ticketing.WebApp.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
-                    b.Property<string>("EventId")
+                    b.Property<string>("EventSeatId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<DateTime>("IssuedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("SeatId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
+                    b.Property<decimal>("Price")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("TicketQrCode")
                         .IsRequired()
@@ -217,7 +216,7 @@ namespace Ticketing.WebApp.Migrations
 
                     b.HasIndex("BookingId");
 
-                    b.HasIndex("SeatId");
+                    b.HasIndex("EventSeatId");
 
                     b.ToTable("BookingItems");
                 });
@@ -244,13 +243,44 @@ namespace Ticketing.WebApp.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("Venue")
+                    b.Property<string>("VenueId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.HasKey("EventId");
 
+                    b.HasIndex("VenueId");
+
                     b.ToTable("Events");
+                });
+
+            modelBuilder.Entity("Ticketing.Core.Model.EventSeat", b =>
+                {
+                    b.Property<string>("EventSeatId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("EventId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<decimal>("Price")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("SeatId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.HasKey("EventSeatId");
+
+                    b.HasIndex("SeatId");
+
+                    b.HasIndex("EventId", "SeatId")
+                        .IsUnique();
+
+                    b.ToTable("EventSeats");
                 });
 
             modelBuilder.Entity("Ticketing.Core.Model.Payment", b =>
@@ -292,26 +322,43 @@ namespace Ticketing.WebApp.Migrations
                     b.Property<string>("SeatId")
                         .HasColumnType("nvarchar(450)");
 
-                    b.Property<string>("EventId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<decimal>("Price")
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<string>("SeatNumber")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
+                    b.Property<string>("SeatRow")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SectionId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
 
                     b.HasKey("SeatId");
 
-                    b.HasIndex("EventId", "Price")
-                        .HasDatabaseName("IX_Seats_EventId_Price");
+                    b.HasIndex("SectionId");
 
                     b.ToTable("Seats");
+                });
+
+            modelBuilder.Entity("Ticketing.Core.Model.Section", b =>
+                {
+                    b.Property<string>("SectionId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("VenueId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("SectionId");
+
+                    b.HasIndex("VenueId");
+
+                    b.ToTable("Sections");
                 });
 
             modelBuilder.Entity("Ticketing.Core.Model.User", b =>
@@ -395,6 +442,24 @@ namespace Ticketing.WebApp.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("Ticketing.Core.Model.Venue", b =>
+                {
+                    b.Property<string>("VenueId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Address")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("VenueId");
+
+                    b.ToTable("Venues");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
@@ -451,7 +516,7 @@ namespace Ticketing.WebApp.Migrations
                     b.HasOne("Ticketing.Core.Model.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("User");
@@ -465,13 +530,43 @@ namespace Ticketing.WebApp.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Ticketing.Core.Model.Seat", "Seat")
+                    b.HasOne("Ticketing.Core.Model.EventSeat", "EventSeat")
                         .WithMany()
-                        .HasForeignKey("SeatId")
+                        .HasForeignKey("EventSeatId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Booking");
+
+                    b.Navigation("EventSeat");
+                });
+
+            modelBuilder.Entity("Ticketing.Core.Model.Event", b =>
+                {
+                    b.HasOne("Ticketing.Core.Model.Venue", "Venue")
+                        .WithMany("Events")
+                        .HasForeignKey("VenueId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Venue");
+                });
+
+            modelBuilder.Entity("Ticketing.Core.Model.EventSeat", b =>
+                {
+                    b.HasOne("Ticketing.Core.Model.Event", "Event")
+                        .WithMany("EventSeats")
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Ticketing.Core.Model.Seat", "Seat")
+                        .WithMany("EventSeats")
+                        .HasForeignKey("SeatId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Event");
 
                     b.Navigation("Seat");
                 });
@@ -489,13 +584,24 @@ namespace Ticketing.WebApp.Migrations
 
             modelBuilder.Entity("Ticketing.Core.Model.Seat", b =>
                 {
-                    b.HasOne("Ticketing.Core.Model.Event", "Event")
+                    b.HasOne("Ticketing.Core.Model.Section", "Section")
                         .WithMany("Seats")
-                        .HasForeignKey("EventId")
+                        .HasForeignKey("SectionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Event");
+                    b.Navigation("Section");
+                });
+
+            modelBuilder.Entity("Ticketing.Core.Model.Section", b =>
+                {
+                    b.HasOne("Ticketing.Core.Model.Venue", "Venue")
+                        .WithMany("Sections")
+                        .HasForeignKey("VenueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Venue");
                 });
 
             modelBuilder.Entity("Ticketing.Core.Model.Booking", b =>
@@ -507,7 +613,24 @@ namespace Ticketing.WebApp.Migrations
 
             modelBuilder.Entity("Ticketing.Core.Model.Event", b =>
                 {
+                    b.Navigation("EventSeats");
+                });
+
+            modelBuilder.Entity("Ticketing.Core.Model.Seat", b =>
+                {
+                    b.Navigation("EventSeats");
+                });
+
+            modelBuilder.Entity("Ticketing.Core.Model.Section", b =>
+                {
                     b.Navigation("Seats");
+                });
+
+            modelBuilder.Entity("Ticketing.Core.Model.Venue", b =>
+                {
+                    b.Navigation("Events");
+
+                    b.Navigation("Sections");
                 });
 #pragma warning restore 612, 618
         }
