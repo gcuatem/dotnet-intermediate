@@ -2,97 +2,153 @@
 erDiagram
     AspNetUsers ||--o{ AspNetUserRoles : has
     AspNetRoles ||--o{ AspNetUserRoles : assigned_to
-    
     AspNetUsers ||--o{ AspNetUserClaims : has
     AspNetUsers ||--o{ AspNetUserLogins : has
     AspNetUsers ||--o{ AspNetUserTokens : has
-    AspNetUsers ||--o{ USER : has
-    
     AspNetRoles ||--o{ AspNetRoleClaims : has
 
-    USER ||--o{ EVENT : creates
-    USER ||--o{ BOOKING : creates
+    AspNetUsers ||--o{ Booking : creates
+    Venue ||--o{ Event : hosts
+    Venue ||--o{ Section : contains
+    Section ||--o{ Seat : contains
+    Event ||--o{ EventSeat : offers
+    Seat ||--o{ EventSeat : assigned_to
+    EventSeat ||--|| Prices : uses
+    Booking ||--o{ BookingItem : contains
+    EventSeat ||--o{ BookingItem : booked_as
+    Booking ||--o| Payment : has
 
-    VENUE ||--o{ EVENT : hosts
-    VENUE ||--o{ SECTION : contains
-    
-    SECTION ||--|{ SEAT : contains
-    
-    SEAT ||--o{ BOOKING_ITEM : includes
-    
-    
-    BOOKING ||--|{ BOOKING_ITEM : contains
-    BOOKING ||--o| PAYMENT : processes
-    
-    USER {
+    AspNetUsers {
+        string Id PK
+        string UserName
+        string NormalizedUserName
+        string Email
+        string NormalizedEmail
+        bool EmailConfirmed
+        string PasswordHash
+        string SecurityStamp
+        string ConcurrencyStamp
+        string PhoneNumber
+        bool PhoneNumberConfirmed
+        bool TwoFactorEnabled
+        datetime LockoutEnd
+        bool LockoutEnabled
+        int AccessFailedCount
+        string FirstName "nullable"
+        string LastName "nullable"
+        string Address "nullable"
+        string IdentificationNumber "nullable"
+    }
 
-        string UserId PK
-        string FirstName
-        string LastName
+    AspNetRoles {
+        string Id PK
+        string Name
+        string NormalizedName
+        string ConcurrencyStamp
+    }
+
+    AspNetUserRoles {
+        string UserId PK, FK
+        string RoleId PK, FK
+    }
+
+    AspNetUserClaims {
+        int Id PK
+        string UserId FK
+        string ClaimType
+        string ClaimValue
+    }
+
+    AspNetUserLogins {
+        string LoginProvider PK
+        string ProviderKey PK
+        string ProviderDisplayName
+        string UserId FK
+    }
+
+    AspNetUserTokens {
+        string UserId PK, FK
+        string LoginProvider PK
+        string Name PK
+        string Value
+    }
+
+    AspNetRoleClaims {
+        int Id PK
+        string RoleId FK
+        string ClaimType
+        string ClaimValue
+    }
+
+    Event {
+        string EventId PK
+        string VenueId FK
+        string Title
+        string Description
+        datetime EventDate
+        bool IsActive
+        datetime CreatedAt
+    }
+
+    Venue {
+        string VenueId PK
+        string Name
         string Address
-        string IdentificationNumber
     }
 
-    EVENT {
-        string eventId PK
-        string venueId FK
-        string title
-        string description
-        datetime eventDate
-        bool isActive
-        datetime createdAt
+    Section {
+        string SectionId PK
+        string VenueId FK
+        string Name
     }
 
-    VENUE {
-        string venueId PK
-        string name
-        string address
+    Seat {
+        string SeatId PK
+        string SectionId FK
+        string SeatNumber
+        string SeatRow
     }
 
-    SECTION {
-        string sectionId PK
-        string venueId FK
-        string name
+    EventSeat {
+        string EventSeatId PK
+        string EventId FK "unique with SeatId"
+        string SeatId FK "unique with EventId"
+        guid PriceId FK, UK
+        int Status "SeatStatus"
     }
 
-    SEAT {
-        string seatId PK
-        string sectionId PK
-        string venueId FK
-        string seatNumber
-        float price
-        string status "Available / Locked / Sold"
+    Prices {
+        guid Id PK
+        string Name "max 200"
+        decimal Price "18,2"
     }
 
-    BOOKING {
-        string bookingId PK
-        string userId FK
-        string status " Pending / Completed / Cancelled"
-        datetime expiresAt 
-        datetime createdAt
+    Booking {
+        string BookingId PK
+        string UserId FK
+        int Status "BookingStatus"
+        datetime ExpiresAt
+        datetime CreatedAt
     }
 
-    BOOKING_ITEM {
-        string itemId PK
-        string bookingId FK
-        string seatId FK
-        string sectionId PK
-        string venueId FK
-        string eventId FK
-        string TicketqrCode
-        string Ticketstatus "Valid / Used / Cancelled"
-        datetime issuedAt
-        datetime validUntil
+    BookingItem {
+        string ItemId PK
+        string BookingId FK
+        string EventSeatId FK
+        decimal Price "18,2"
+        string TicketQrCode
+        int TicketStatus "TicketStatus"
+        datetime IssuedAt
+        datetime ValidUntil "nullable"
     }
 
-    PAYMENT {
-        string paymentId PK
-        string bookingId FK
-        float amount
-        string currency
-        string status "Success / Failed"
-        string gatewayReference "Stripe/PayPal ID"
-        datetime timestamp
+    Payment {
+        string PaymentId PK
+        string BookingId FK, UK
+        decimal Amount "18,2"
+        string Currency
+        int Status "PaymentStatus"
+        string GatewayReference
+        datetime Timestamp
     }
-
 ```

@@ -95,17 +95,25 @@ public class EventRepository : IEventRepository
             foreach (var seat in seats)
             {
                 var price = requestedPrices.TryGetValue(seat.SeatId, out var configuredPrice)
-                    ? configuredPrice
+                    ? configuredPrice.Price
                     : 0m;
                 if (price < 0)
                     throw new InvalidOperationException("Event seat price cannot be negative.");
+
+                var priceId = Guid.NewGuid();
+                await _connection.ExecuteAsync(EventSqlQueries.AddPrice, new
+                {
+                    Id = priceId,
+                    Name = configuredPrice?.Name ?? "Standard",
+                    Price = price
+                }, transaction);
 
                 eventSeatRows += await _connection.ExecuteAsync(EventSqlQueries.AddEventSeat, new
                 {
                     EventSeatId = Guid.NewGuid().ToString(),
                     EventId = @event.EventId,
                     SeatId = seat.SeatId,
-                    Price = price,
+                    PriceId = priceId,
                     Status = SeatStatus.Available
                 }, transaction);
             }
@@ -153,7 +161,7 @@ public class EventRepository : IEventRepository
 public static class EventSqlQueries
 {
   public static string eventFields = @"EventId, VenueId, Title, Description, EventDate, IsActive, CreatedAt";
-  public static string seatFields = @"es.EventSeatId, s.SeatId, s.SectionId, sec.Name AS SectionName, s.SeatNumber, s.SeatRow, es.Price, es.Status";
+  public static string seatFields = @"es.EventSeatId, s.SeatId, s.SectionId, sec.Name AS SectionName, s.SeatNumber, s.SeatRow, p.Id AS PriceId, p.Name AS PriceName, es.Status";
   public static string GetAll = @$"
         SELECT {eventFields}
         FROM Events
@@ -167,13 +175,15 @@ public static class EventSqlQueries
         FROM EventSeats es
         INNER JOIN Seats s ON s.SeatId = es.SeatId
         INNER JOIN Sections sec ON sec.SectionId = s.SectionId
+        INNER JOIN Prices p ON p.Id = es.PriceId
         WHERE es.EventId = @EventId
-        ORDER BY es.Price ASC;";
+        ORDER BY p.Price ASC;";
   public static string GetSeatsByEventAndSection = @$"
         SELECT {seatFields}
         FROM EventSeats es
         INNER JOIN Seats s ON s.SeatId = es.SeatId
         INNER JOIN Sections sec ON sec.SectionId = s.SectionId
+        INNER JOIN Prices p ON p.Id = es.PriceId
         WHERE es.EventId = @EventId
           AND s.SectionId = @SectionId
         ORDER BY s.SeatNumber;";
@@ -182,9 +192,10 @@ public static class EventSqlQueries
         FROM EventSeats es
         INNER JOIN Seats s ON s.SeatId = es.SeatId
         INNER JOIN Sections sec ON sec.SectionId = s.SectionId
+        INNER JOIN Prices p ON p.Id = es.PriceId
         WHERE es.EventId = @EventId
           AND es.Status = @Status
-        ORDER BY es.Price ASC;";
+        ORDER BY p.Price ASC;";
   public static string Add = @$"
         INSERT INTO Events ({eventFields})
         VALUES (
@@ -200,9 +211,12 @@ public static class EventSqlQueries
         FROM Seats s
         INNER JOIN Sections sec ON sec.SectionId = s.SectionId
         WHERE sec.VenueId = @VenueId;";
+  public const string AddPrice = @"
+        INSERT INTO Prices (Id, Name, Price)
+        VALUES (@Id, @Name, @Price);";
   public const string AddEventSeat = @"
-        INSERT INTO EventSeats (EventSeatId, EventId, SeatId, Price, Status)
-        VALUES (@EventSeatId, @EventId, @SeatId, @Price, @Status);";
+        INSERT INTO EventSeats (EventSeatId, EventId, SeatId, PriceId, Status)
+        VALUES (@EventSeatId, @EventId, @SeatId, @PriceId, @Status);";
   public static string Update = @"
         UPDATE Events
         SET

@@ -9,7 +9,7 @@ namespace Ticketing.Api.Controllers;
 [ApiController]
 public sealed class BookingController(IBookingRepository repository) : ControllerBase
 {
-    [HttpGet("{bookingId}")]
+    [HttpGet("/orders/carts/{bookingId}")]
     public async Task<IActionResult> Get(string bookingId, [FromQuery] string userId, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(userId)) return BadRequest("UserId is required.");
@@ -18,13 +18,15 @@ public sealed class BookingController(IBookingRepository repository) : Controlle
         return booking is null ? NotFound() : Ok(booking);
     }
 
-    [HttpPost]
+    [HttpPost("/orders/carts/{cart_id}")]
     public async Task<ActionResult<BookingStateResponse>> Create(
+        [FromRoute(Name = "cart_id")] string cartId,
         [FromBody] AddBookingItemRequest request, CancellationToken cancellationToken)
     {
-        var booking = await repository.AddItemAsync(request.UserId, request.EventId, request.SeatId, request.Price);
+        var booking = await repository.AddItemAsync(
+            cartId, request.UserId, request.EventId, request.SeatId, request.PriceId);
         var total = booking.Items.Sum(item => item.Price);
-        return Created($"/booking/{booking.BookingId}",
+        return Created($"/orders/carts/{booking.BookingId}",
             new BookingStateResponse(booking.BookingId, booking.Status.ToString(), total));
     }
 
@@ -32,7 +34,7 @@ public sealed class BookingController(IBookingRepository repository) : Controlle
     public async Task<ActionResult<BookingStateResponse>> AddItem(
         string bookingId, [FromBody] AddBookingItemRequest request, CancellationToken cancellationToken)
     {
-        var booking = await repository.AddItemAsync(bookingId, request.UserId, request.EventId, request.SeatId, request.Price);
+        var booking = await repository.AddItemAsync(bookingId, request.UserId, request.EventId, request.SeatId, request.PriceId);
         var total = booking.Items.Sum(item => item.Price);
         return Ok(new BookingStateResponse(bookingId, booking.Status.ToString(), total));
     }
@@ -47,13 +49,15 @@ public sealed class BookingController(IBookingRepository repository) : Controlle
         return removed ? NoContent() : NotFound();
     }
 
-    [HttpPut("{bookingId}/book")]
+    [HttpPut("/orders/carts/{cart_id}")]
     public async Task<ActionResult<PaymentReferenceResponse>> Book(
-        string bookingId, [FromQuery] string userId, CancellationToken cancellationToken)
+        [FromRoute(Name = "cart_id")] string cartId,
+        [FromQuery] string userId,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(userId)) return BadRequest("UserId is required.");
 
-        var paymentId = await repository.MarkBookedAsync(bookingId, userId);
+        var paymentId = await repository.MarkBookedAsync(cartId, userId);
         return Ok(new PaymentReferenceResponse(paymentId));
     }
 }
@@ -64,7 +68,7 @@ public sealed record AddBookingItemRequest
     [System.ComponentModel.DataAnnotations.Required] public required string UserId { get; init; }
     [System.ComponentModel.DataAnnotations.Required] public required string EventId { get; init; }
     [System.ComponentModel.DataAnnotations.Required] public required string SeatId { get; init; }
-    [System.ComponentModel.DataAnnotations.Range(typeof(decimal), "0", "999999.99")] public decimal Price { get; init; }
+    [System.ComponentModel.DataAnnotations.Required] public Guid PriceId { get; init; }
 }
 public sealed record BookingStateResponse(string BookingId, string Status, decimal TotalAmount);
 public sealed record PaymentReferenceResponse(string PaymentId);

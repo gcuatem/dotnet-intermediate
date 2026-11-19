@@ -24,7 +24,11 @@ public sealed class EventsController(IEventRepository repository) : ControllerBa
             EventSeats = request.Seats.Select(seat => new EventSeat
             {
                 SeatId = seat.SeatId,
-                Price = seat.Price
+                Price = new TicketPrice
+                {
+                    Name = seat.Name,
+                    Price = seat.Price
+                }
             }).ToList()
         };
 
@@ -56,7 +60,7 @@ public sealed class EventsController(IEventRepository repository) : ControllerBa
             seat.SeatNumber,
             seat.SeatId,
             seat.Status,
-            seat.Price.ToString("0.00")));
+            new EventSeatPriceResponse(seat.PriceId, seat.PriceName)));
         return Ok(response);
     }
 
@@ -75,13 +79,13 @@ public sealed class EventsController(IEventRepository repository) : ControllerBa
             seat.SeatNumber,
             seat.SeatId,
             seat.Status,
-            seat.Price.ToString("0.00")));
+            new EventSeatPriceResponse(seat.PriceId, seat.PriceName)));
         return Ok(response);
     }
 }
 
 public sealed record NamedOption(string Id, string Name);
-/// <summary>Payload for creating an event and configuring venue seat prices.</summary>
+/// <summary>Payload for creating an event and configuring named venue seat prices.</summary>
 public sealed record CreateEventRequest
 {
     [Required] public required string VenueId { get; init; }
@@ -91,15 +95,18 @@ public sealed record CreateEventRequest
     [Required, MinLength(1)] public required IReadOnlyList<CreateEventSeatRequest> Seats { get; init; }
 }
 
-/// <summary>Event-specific price for a venue seat.</summary>
+/// <summary>Event-specific named price for a venue seat.</summary>
 public sealed record CreateEventSeatRequest
 {
     [Required] public required string SeatId { get; init; }
+    [Required, StringLength(200)] public required string Name { get; init; }
     [Range(typeof(decimal), "0", "999999.99")] public decimal Price { get; init; }
 }
 
 /// <summary>Created event response.</summary>
 public sealed record CreateEventResponse(string EventId, string VenueId, string Title, string Description, DateTime EventDate);
+
+public sealed record EventSeatPriceResponse(Guid PriceId, string Name);
 
 public sealed record EventSeatResponse(
     string SectionId,
@@ -108,4 +115,4 @@ public sealed record EventSeatResponse(
     string SeatNumber,
     string SeatId,
     SeatStatus Status,
-    string Price);
+    EventSeatPriceResponse Price);

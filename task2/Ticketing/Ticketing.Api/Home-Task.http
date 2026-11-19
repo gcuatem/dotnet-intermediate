@@ -19,14 +19,14 @@ GET {{baseUrl}}/events/8a90c9fa-f408-4fb5-be05-35b730b8e8fe/sections/5181642d-7f
 GET {{baseUrl}}/booking/69f5a274-0c08-4f03-97b2-2e835b63bbc7?userId=fedf21e2-22c1-4a5f-8e84-7a7df4a9a499
 
 ### Create a new booking with A1
-POST {{baseUrl}}/booking
+POST {{baseUrl}}/orders/carts/27657FAB-EB3F-4779-8791-01B48118A33F
 Content-Type: application/json
 
 {
   "userId": "fedf21e2-22c1-4a5f-8e84-7a7df4a9a499",
   "eventId": "8a90c9fa-f408-4fb5-be05-35b730b8e8fe",
   "seatId": "dbb1e491-a77a-419a-b77e-9660317f101b",
-  "price": 120.00
+  "priceId": "62c2cf83-23c6-4abf-b881-1badc6f010d3"
 }
 
 
@@ -44,6 +44,8 @@ Content-Type: application/json
 ### Remove seat from booking
 DELETE {{baseUrl}}/booking/69f5a274-0c08-4f03-97b2-2e835b63bbc7/events/8a90c9fa-f408-4fb5-be05-35b730b8e8fe/seats/dbb1e491-a77a-419a-b77e-9660317f101b?userId=fedf21e2-22c1-4a5f-8e84-7a7df4a9a499
 
+### Book cart and create pending payment
+PUT {{baseUrl}}/orders/carts/69f5a274-0c08-4f03-97b2-2e835b63bbc7?userId=fedf21e2-22c1-4a5f-8e84-7a7df4a9a499
 
 ### Payments
 ### a. GET payments/{payment_id} 

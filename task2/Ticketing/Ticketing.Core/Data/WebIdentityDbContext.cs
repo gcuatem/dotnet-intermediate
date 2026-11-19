@@ -17,6 +17,7 @@ public class WebIdentityDbContext : IdentityDbContext<User>
   public DbSet<Section> Sections { get; set; } = null!;
   public DbSet<Seat> Seats { get; set; } = null!;
   public DbSet<EventSeat> EventSeats { get; set; } = null!;
+  public DbSet<TicketPrice> Prices { get; set; } = null!;
   public DbSet<Booking> Bookings { get; set; } = null!;
   public DbSet<BookingItem> BookingItems { get; set; } = null!;
   public DbSet<Payment> Payments { get; set; } = null!;
@@ -31,6 +32,7 @@ public class WebIdentityDbContext : IdentityDbContext<User>
     builder.Entity<Section>().HasKey(s => s.SectionId);
     builder.Entity<Seat>().HasKey(s => s.SeatId);
     builder.Entity<EventSeat>().HasKey(es => es.EventSeatId);
+    builder.Entity<TicketPrice>().HasKey(p => p.Id);
     builder.Entity<Booking>().HasKey(b => b.BookingId);
     builder.Entity<BookingItem>().HasKey(bi => bi.ItemId);
     builder.Entity<Payment>().HasKey(p => p.PaymentId);
@@ -43,9 +45,14 @@ public class WebIdentityDbContext : IdentityDbContext<User>
     .Property(item => item.Price)
     .HasColumnType("decimal(18,2)");
 
-    builder.Entity<EventSeat>()
-    .Property(es => es.Price)
-    .HasColumnType("decimal(18,2)");
+    builder.Entity<TicketPrice>().ToTable("Prices");
+    builder.Entity<TicketPrice>()
+        .Property(p => p.Name)
+        .HasMaxLength(200)
+        .IsRequired();
+    builder.Entity<TicketPrice>()
+        .Property(p => p.Price)
+        .HasColumnType("decimal(18,2)");
 
     // Índices para optimizar consultas
     builder.Entity<EventSeat>().HasIndex(es => new { es.EventId, es.SeatId }).IsUnique();
@@ -78,6 +85,12 @@ public class WebIdentityDbContext : IdentityDbContext<User>
         .HasOne(es => es.Seat)
         .WithMany(s => s.EventSeats)
         .HasForeignKey(es => es.SeatId)
+        .OnDelete(DeleteBehavior.Cascade);
+
+    builder.Entity<EventSeat>()
+        .HasOne(es => es.Price)
+        .WithOne(price => price.EventSeat)
+        .HasForeignKey<EventSeat>(es => es.PriceId)
         .OnDelete(DeleteBehavior.Cascade);
 
     builder.Entity<Booking>()

@@ -5,6 +5,14 @@ using Ticketing.Core.Model;
 
 namespace Ticketing.Core.Repositories;
 
+internal sealed record EventSeatBookingInfo(
+    string EventSeatId,
+    string EventId,
+    string SeatId,
+    Guid PriceId,
+    decimal Price,
+    SeatStatus Status);
+
 public class BookingRepository : IBookingRepository
 {
     private readonly IDbConnection _connection;
@@ -92,7 +100,7 @@ public class BookingRepository : IBookingRepository
             {
                 ArgumentException.ThrowIfNullOrWhiteSpace(item.EventSeatId);
 
-                var eventSeat = await connection.QuerySingleOrDefaultAsync<EventSeat>(
+                var eventSeat = await connection.QuerySingleOrDefaultAsync<EventSeatBookingInfo>(
                     BookingSqlQueries.GetEventSeatById,
                     new { EventSeatId = item.EventSeatId }, dbTransaction);
                 if (eventSeat is null)
@@ -135,21 +143,23 @@ public class BookingRepository : IBookingRepository
         }, transaction);
     }
 
-    public Task<Booking> AddItemAsync(string userId, string eventId, string seatId, decimal price)
+    public Task<Booking> AddItemAsync(string userId, string eventId, string seatId, Guid priceId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         ArgumentException.ThrowIfNullOrWhiteSpace(eventId);
         ArgumentException.ThrowIfNullOrWhiteSpace(seatId);
+        if (priceId == Guid.Empty) throw new ArgumentException("PriceId is required.", nameof(priceId));
 
-        return AddItemAsync(Guid.NewGuid().ToString(), userId, eventId, seatId, price);
+        return AddItemAsync(Guid.NewGuid().ToString(), userId, eventId, seatId, priceId);
     }
 
-    public async Task<Booking> AddItemAsync(string bookingId, string userId, string eventId, string seatId, decimal price)
+    public async Task<Booking> AddItemAsync(string bookingId, string userId, string eventId, string seatId, Guid priceId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(bookingId);
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         ArgumentException.ThrowIfNullOrWhiteSpace(eventId);
         ArgumentException.ThrowIfNullOrWhiteSpace(seatId);
+        if (priceId == Guid.Empty) throw new ArgumentException("PriceId is required.", nameof(priceId));
 
         using var transaction = _connection.BeginTransaction();
         try
@@ -180,8 +190,8 @@ public class BookingRepository : IBookingRepository
                 throw new UnauthorizedAccessException("The booking does not belong to this user.");
             }
 
-            var eventSeat = await _connection.QuerySingleOrDefaultAsync<EventSeat>(BookingSqlQueries.GetEventSeat,
-                new { EventId = eventId, SeatId = seatId }, transaction);
+            var eventSeat = await _connection.QuerySingleOrDefaultAsync<EventSeatBookingInfo>(BookingSqlQueries.GetEventSeat,
+                new { EventId = eventId, SeatId = seatId, PriceId = priceId }, transaction);
             if (eventSeat is null) throw new InvalidOperationException("The seat is not available for this event.");
             if (eventSeat.Status != SeatStatus.Available) throw new InvalidOperationException("The seat is not available.");
 
@@ -284,13 +294,6 @@ public class BookingRepository : IBookingRepository
             new { BookingId = bookingId }, transaction)).ToList();
         if (items.Count == 0) throw new InvalidOperationException("The booking has no items.");
 
-        await _connection.ExecuteAsync(BookingSqlQueries.MarkCompletedBooking,
-            new { BookingId = bookingId, Pending = BookingStatus.Pending, Completed = BookingStatus.Completed }, transaction);
-        await _connection.ExecuteAsync(BookingSqlQueries.MarkSeatsSoldForBooking,
-            new { BookingId = bookingId, Sold = SeatStatus.Sold, Locked = SeatStatus.Locked }, transaction);
-        await _connection.ExecuteAsync(BookingSqlQueries.MarkBookingItemsValid,
-            new { BookingId = bookingId, Pending = TicketStatus.Pending, Valid = TicketStatus.Valid, Cancelled = TicketStatus.Cancelled }, transaction);
-
         var paymentId = Guid.NewGuid().ToString();
         await _connection.ExecuteAsync(PaymentSqlQueries.Insert,
             new
@@ -299,7 +302,7 @@ public class BookingRepository : IBookingRepository
                 BookingId = bookingId,
                 Amount = items.Sum(i => i.Price),
                 Currency = "USD",
-                Status = PaymentStatus.Success,
+                Status = PaymentStatus.Pending,
                 GatewayReference = string.Empty,
                 Timestamp = DateTime.UtcNow
             }, transaction);
@@ -424,14 +427,16 @@ public static class BookingSqlQueries
         WHERE BookingId = @BookingId AND EventSeatId = @EventSeatId;";
 
     public const string GetEventSeat = @"
-        SELECT EventSeatId, EventId, SeatId, Price, Status
-        FROM EventSeats
-        WHERE EventId = @EventId AND SeatId = @SeatId;";
+        SELECT es.EventSeatId, es.EventId, es.SeatId, es.PriceId, p.Price, es.Status
+        FROM EventSeats es
+        INNER JOIN Prices p ON p.Id = es.PriceId
+        WHERE es.EventId = @EventId AND es.SeatId = @SeatId AND es.PriceId = @PriceId;";
 
     public const string GetEventSeatById = @"
-        SELECT EventSeatId, EventId, SeatId, Price, Status
-        FROM EventSeats
-        WHERE EventSeatId = @EventSeatId;";
+        SELECT es.EventSeatId, es.EventId, es.SeatId, p.Price, es.Status
+        FROM EventSeats es
+        INNER JOIN Prices p ON p.Id = es.PriceId
+        WHERE es.EventSeatId = @EventSeatId;";
 
     public const string GetEventSeatId = @"
         SELECT EventSeatId FROM EventSeats
@@ -447,9 +452,10 @@ public static class BookingSqlQueries
 
     public const string GetItemsByBookingId = @"
         SELECT bi.ItemId, bi.BookingId, bi.EventSeatId, bi.TicketQrCode, bi.TicketStatus, bi.IssuedAt, bi.ValidUntil,
-               COALESCE(bi.Price, es.Price) AS Price
+               COALESCE(bi.Price, p.Price) AS Price
         FROM BookingItems bi
         LEFT JOIN EventSeats es ON es.EventSeatId = bi.EventSeatId
+        LEFT JOIN Prices p ON p.Id = es.PriceId
         WHERE bi.BookingId = @BookingId
         ORDER BY IssuedAt;";
 

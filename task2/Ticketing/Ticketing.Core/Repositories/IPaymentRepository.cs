@@ -10,4 +10,6 @@ public interface IPaymentRepository
     Task<Payment?> GetByIdAsync(string paymentId);
     Task<Payment?> GetByBookingIdAsync(string bookingId);
     Task<Payment> CreateAsync(Payment payment, IDbTransaction? transaction = null);
+    Task<bool> CompleteAsync(string paymentId);
+    Task<bool> FailAsync(string paymentId);
 }

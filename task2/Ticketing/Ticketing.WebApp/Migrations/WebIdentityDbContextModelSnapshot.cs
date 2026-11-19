@@ -260,8 +260,8 @@ namespace Ticketing.WebApp.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
-                    b.Property<decimal>("Price")
-                        .HasColumnType("decimal(18,2)");
+                    b.Property<Guid>("PriceId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("SeatId")
                         .IsRequired()
@@ -271,6 +271,9 @@ namespace Ticketing.WebApp.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("EventSeatId");
+
+                    b.HasIndex("PriceId")
+                        .IsUnique();
 
                     b.HasIndex("SeatId");
 
@@ -356,6 +359,25 @@ namespace Ticketing.WebApp.Migrations
                     b.HasIndex("VenueId");
 
                     b.ToTable("Sections");
+                });
+
+            modelBuilder.Entity("Ticketing.Core.Model.TicketPrice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<decimal>("Price")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Prices", (string)null);
                 });
 
             modelBuilder.Entity("Ticketing.Core.Model.User", b =>
@@ -557,6 +579,12 @@ namespace Ticketing.WebApp.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Ticketing.Core.Model.TicketPrice", "Price")
+                        .WithOne("EventSeat")
+                        .HasForeignKey("Ticketing.Core.Model.EventSeat", "PriceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("Ticketing.Core.Model.Seat", "Seat")
                         .WithMany("EventSeats")
                         .HasForeignKey("SeatId")
@@ -564,6 +592,8 @@ namespace Ticketing.WebApp.Migrations
                         .IsRequired();
 
                     b.Navigation("Event");
+
+                    b.Navigation("Price");
 
                     b.Navigation("Seat");
                 });
@@ -621,6 +651,11 @@ namespace Ticketing.WebApp.Migrations
             modelBuilder.Entity("Ticketing.Core.Model.Section", b =>
                 {
                     b.Navigation("Seats");
+                });
+
+            modelBuilder.Entity("Ticketing.Core.Model.TicketPrice", b =>
+                {
+                    b.Navigation("EventSeat");
                 });
 
             modelBuilder.Entity("Ticketing.Core.Model.Venue", b =>

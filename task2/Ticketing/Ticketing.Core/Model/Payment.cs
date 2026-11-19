@@ -11,7 +11,7 @@ public class Payment
   public string BookingId { get; set; } = string.Empty;
   public decimal Amount { get; set; }
   public string Currency { get; set; } = "USD";
-  public PaymentStatus Status { get; set; } = PaymentStatus.Success;
+  public PaymentStatus Status { get; set; } = PaymentStatus.Pending;
   public string GatewayReference { get; set; } = string.Empty;
   public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 

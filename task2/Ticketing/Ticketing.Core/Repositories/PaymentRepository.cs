@@ -40,6 +40,7 @@ public class PaymentRepository : IPaymentRepository
         return await ExecuteInTransactionAsync(async (connection, dbTransaction) =>
         {
             payment.PaymentId = string.IsNullOrWhiteSpace(payment.PaymentId) ? Guid.NewGuid().ToString() : payment.PaymentId;
+            payment.Status = PaymentStatus.Pending;
             payment.Timestamp = payment.Timestamp == default ? DateTime.UtcNow : payment.Timestamp;
 
             await connection.ExecuteAsync(PaymentSqlQueries.Insert, new
@@ -53,60 +54,99 @@ public class PaymentRepository : IPaymentRepository
                 Timestamp = payment.Timestamp
             }, dbTransaction);
 
-          if(payment.Status == PaymentStatus.Success)
-          {
-            await connection.ExecuteAsync(BookingSqlQueries.MarkCompletedBooking, new
-            {
-              BookingId = payment.BookingId,
-              Pending = BookingStatus.Pending,
-              Completed = BookingStatus.Completed
-            }, dbTransaction);
-
-            await connection.ExecuteAsync(BookingSqlQueries.MarkSeatsSoldForBooking, new
-            {
-              BookingId = payment.BookingId,
-              Sold = SeatStatus.Sold,
-              Locked = SeatStatus.Locked
-            }, dbTransaction);
-
-            await connection.ExecuteAsync(BookingSqlQueries.MarkBookingItemsValid, new
-            {
-              BookingId = payment.BookingId,
-              Pending = TicketStatus.Pending,
-              Valid = TicketStatus.Valid,
-              Cancelled = TicketStatus.Cancelled
-            }, dbTransaction);
-          }
-          else
-          {
-            await connection.ExecuteAsync(BookingSqlQueries.CancelPendingBooking, new
-            {
-              BookingId = payment.BookingId,
-              Pending = BookingStatus.Pending,
-              Cancelled = BookingStatus.Cancelled
-            }, dbTransaction);
-
-            await connection.ExecuteAsync(BookingSqlQueries.ReleaseSeatsForBooking, new
-            {
-              BookingId = payment.BookingId,
-              Available = SeatStatus.Available,
-              Locked = SeatStatus.Locked
-            }, dbTransaction);
-
-            await connection.ExecuteAsync(BookingSqlQueries.CancelBookingItems, new
-            {
-              BookingId = payment.BookingId,
-              Pending = TicketStatus.Pending,
-              Cancelled = TicketStatus.Cancelled
-            }, dbTransaction);
-          }
-
             return payment;
         }, transaction);
     }
 
 
-    private async Task<T> ExecuteInTransactionAsync<T>(Func<IDbConnection, IDbTransaction, Task<T>> action, IDbTransaction? existingTransaction)
+    public Task<bool> CompleteAsync(string paymentId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(paymentId);
+
+        return ExecuteInTransactionAsync(async (connection, transaction) =>
+        {
+            var payment = await connection.QuerySingleOrDefaultAsync<Payment>(
+                PaymentSqlQueries.GetById,
+                new { PaymentId = paymentId },
+                transaction);
+            if (payment is null || payment.Status != PaymentStatus.Pending)
+            {
+                return false;
+            }
+
+            var paymentUpdated = await connection.ExecuteAsync(PaymentSqlQueries.MarkStatus,
+                new { PaymentId = paymentId, Status = PaymentStatus.Success, Pending = PaymentStatus.Pending },
+                transaction);
+            if (paymentUpdated == 0) return false;
+
+            await connection.ExecuteAsync(BookingSqlQueries.MarkCompletedBooking, new
+            {
+                BookingId = payment.BookingId,
+                Pending = BookingStatus.Pending,
+                Completed = BookingStatus.Completed
+            }, transaction);
+            await connection.ExecuteAsync(BookingSqlQueries.MarkSeatsSoldForBooking, new
+            {
+                BookingId = payment.BookingId,
+                Sold = SeatStatus.Sold,
+                Locked = SeatStatus.Locked
+            }, transaction);
+            await connection.ExecuteAsync(BookingSqlQueries.MarkBookingItemsValid, new
+            {
+                BookingId = payment.BookingId,
+                Pending = TicketStatus.Pending,
+                Valid = TicketStatus.Valid,
+                Cancelled = TicketStatus.Cancelled
+            }, transaction);
+
+            return true;
+        });
+    }
+
+    public Task<bool> FailAsync(string paymentId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(paymentId);
+
+        return ExecuteInTransactionAsync(async (connection, transaction) =>
+        {
+            var payment = await connection.QuerySingleOrDefaultAsync<Payment>(
+                PaymentSqlQueries.GetById,
+                new { PaymentId = paymentId },
+                transaction);
+            if (payment is null || payment.Status != PaymentStatus.Pending)
+            {
+                return false;
+            }
+
+            var paymentUpdated = await connection.ExecuteAsync(PaymentSqlQueries.MarkStatus,
+                new { PaymentId = paymentId, Status = PaymentStatus.Failed, Pending = PaymentStatus.Pending },
+                transaction);
+            if (paymentUpdated == 0) return false;
+
+            await connection.ExecuteAsync(BookingSqlQueries.CancelPendingBooking, new
+            {
+                BookingId = payment.BookingId,
+                Pending = BookingStatus.Pending,
+                Cancelled = BookingStatus.Cancelled
+            }, transaction);
+            await connection.ExecuteAsync(BookingSqlQueries.ReleaseSeatsForBooking, new
+            {
+                BookingId = payment.BookingId,
+                Available = SeatStatus.Available,
+                Locked = SeatStatus.Locked
+            }, transaction);
+            await connection.ExecuteAsync(BookingSqlQueries.CancelBookingItems, new
+            {
+                BookingId = payment.BookingId,
+                Pending = TicketStatus.Pending,
+                Cancelled = TicketStatus.Cancelled
+            }, transaction);
+
+            return true;
+        });
+    }
+
+    private async Task<T> ExecuteInTransactionAsync<T>(Func<IDbConnection, IDbTransaction, Task<T>> action, IDbTransaction? existingTransaction = null)
     {
         if (existingTransaction is not null)
         {
@@ -143,5 +183,10 @@ public static class PaymentSqlQueries
     public const string Insert = @"
         INSERT INTO Payments (PaymentId, BookingId, Amount, Currency, Status, GatewayReference, Timestamp)
         VALUES (@PaymentId, @BookingId, @Amount, @Currency, @Status, @GatewayReference, @Timestamp);";
+
+    public const string MarkStatus = @"
+        UPDATE Payments
+        SET Status = @Status
+        WHERE PaymentId = @PaymentId AND Status = @Pending;";
 
 }

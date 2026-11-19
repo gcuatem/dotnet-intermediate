@@ -10,7 +10,8 @@ public sealed record EventSeatListItem(
     string SectionName,
     string SeatNumber,
     string SeatRow,
-    decimal Price,
+    Guid PriceId,
+    string PriceName,
     SeatStatus Status);
 
 public interface IEventRepository
